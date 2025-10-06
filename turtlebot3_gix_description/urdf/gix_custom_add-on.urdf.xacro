@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!-- OpenManipulator-X -->
+<!--
+Copied and modified from open_manipulator-x example -
+https://github.com/ROBOTIS-GIT/open_manipulator/blob/kinetic-devel/open_manipulator_description/urdf/open_manipulator.urdf.xacro
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="gix_body" params="prefix">
+
+    <xacro:property
+      name="meshes_file_direction"
+      value="package://turtlebot3_manipulation_description/meshes/open_manipulator_x"/>
+
+    <link name="${prefix}link1">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${meshes_file_direction}/link1.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="grey"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.05 0.05 0.05"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}gix" type="revolute">
+      <parent link="${prefix}link1"/>
+      <child link="${prefix}link2"/>
+      <origin xyz="0.012 0.0 0.017" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit velocity="4.8" effort="1" lower="${-pi*0.9}" upper="${pi*0.9}" />
+      <dynamics damping="0.1"/>
+    </joint>
+
+    <link name="${prefix}link2">
+      <visual>
+        <origin xyz="0 0 0.019" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${meshes_file_direction}/link2.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="grey"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0.019" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${meshes_file_direction}/link2.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+
+</robot>
