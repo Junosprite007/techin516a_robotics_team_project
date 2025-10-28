@@ -1,0 +1,9 @@
+<library path="turtlebot3_gix_hardware">
+  <class name="turtlebot3_gix_hardware/TurtleBot3GIXSystemHardware"
+         type="robotis::turtlebot3_gix_hardware::TurtleBot3GIXSystemHardware"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Add description
+    </description>
+  </class>
+</library>

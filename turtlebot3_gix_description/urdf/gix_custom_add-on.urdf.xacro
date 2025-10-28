@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<!-- OpenManipulator-X -->
+<!--
+Copied and modified from open_manipulator-x example -
+https://github.com/ROBOTIS-GIT/open_manipulator/blob/kinetic-devel/open_manipulator_description/urdf/open_manipulator.urdf.xacro
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="gix_body" params="prefix">
+    <link name="${prefix}box_body">
+      <visual>
+        <origin xyz="-0.01 0 0.072" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.192 0.154 0.144"/>
+        </geometry>
+        <material name="yellow"/>
+      </visual>
+      <collision>
+        <origin xyz="-0.01 0 0.072" rpy="0 0 0"/>
+        <geometry>
+          <box size="192.0 154.0 144.0"/>
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+</robot>

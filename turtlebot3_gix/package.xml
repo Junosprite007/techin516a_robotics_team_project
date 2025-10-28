@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>turtlebot3_gix</name>
+  <version>2.2.1</version>
+  <description>
+    Example final project for UW GIX MSTI TECHIN 516
+  </description>
+  <maintainer email="jhat@uw.edu">Jack</maintainer>
+  <license>Apache 2.0</license>
+  <author email="jhat@uw.edu">Jack</author>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>turtlebot3_gix_bringup</exec_depend>
+  <exec_depend>turtlebot3_gix_cartographer</exec_depend>
+  <exec_depend>turtlebot3_gix_description</exec_depend>
+  <exec_depend>turtlebot3_gix_hardware</exec_depend>
+  <exec_depend>turtlebot3_gix_navigation2</exec_depend>
+  <exec_depend>turtlebot3_gix_teleop</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
