@@ -34,6 +34,14 @@ cd ..
 colcon build
 ```
 
+After attaching the new motor, flashing the OpenCR, and building the Turtlebot's new workspace, you can test the new motor with the command below:  
+Note that positions are in radians.  
+**Keep clear of the motor when it moves!**  
+```bash
+ros2 topic pub --once /gix_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+"{joint_names: ['gix'], points: [{positions: [1.0], time_from_start: {sec: 2}}]}"
+```
+
 
 ### Laptop
 
