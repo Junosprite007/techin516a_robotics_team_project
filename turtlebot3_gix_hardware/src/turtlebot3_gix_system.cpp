@@ -154,6 +154,7 @@ hardware_interface::CallbackReturn TurtleBot3GIXSystemHardware::on_activate(
   opencr_->imu_recalibration();
   rclcpp::sleep_for(std::chrono::seconds(3));
 
+  opencr_->read_all();
   auto cur = opencr_->get_gix_positions()[opencr::gix::GIX];
   dxl_gix_commands_[0] = cur;
 
@@ -232,8 +233,12 @@ hardware_interface::return_type TurtleBot3GIXSystemHardware::write(
     RCLCPP_ERROR(logger, "Can't control wheels");
   }
 
-  if (opencr_->set_gix_positions(dxl_gix_commands_) == false) {
-    RCLCPP_ERROR(logger, "Can't control GIX motor");
+  if (!std::isnan(dxl_gix_commands_[0])) {
+    if (opencr_->set_gix_positions(dxl_gix_commands_) == false) {
+      RCLCPP_ERROR(logger, "Can't control GIX motor");
+    }
+  } else {
+    RCLCPP_DEBUG(logger, "Skipping GIX write: command is NaN");
   }
 
   return hardware_interface::return_type::OK;

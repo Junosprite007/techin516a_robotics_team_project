@@ -21,11 +21,11 @@
 
   <xacro:turtlebot3_burger prefix="$(arg prefix)" />
 
-  <!-- Used for fixing OpenManipulator-X on TurtleBot3 Waffle Pi -->
+  <!-- Used for fixing custom additions to TurtleBot3 -->
   <joint name="$(arg prefix)base_fixed" type="fixed">
     <parent link="$(arg prefix)base_link"/>
-    <child link="$(arg prefix)link1"/>
-    <origin xyz="-0.092 0.0 0.091" rpy="0 0 0"/>
+    <child link="$(arg prefix)box_body"/>
+    <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
   </joint>
 
   <xacro:gix_body prefix="$(arg prefix)" />
