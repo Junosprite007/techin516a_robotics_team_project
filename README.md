@@ -1,5 +1,7 @@
 # UW GIX MSTI TECHIN 516 Winter 2025 Example Final Project
 
+![project example](/assets/final_project_example.jpg)
+
 ## Description
 
 This year, UW GIX MSTI robotics students will designing and developing their own robots!  
