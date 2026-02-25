@@ -23,7 +23,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'yolo2motor = yolo2motor.yolo2motor:main'
+            'yolo2motor = yolo2motor.yolo2motor:main',
+            'ping_pong = yolo2motor.ping_pong:main',
         ],
     },
 )
