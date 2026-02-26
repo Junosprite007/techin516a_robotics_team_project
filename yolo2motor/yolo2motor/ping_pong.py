@@ -10,11 +10,9 @@ from yolo_msgs.msg import DetectionArray as YoloDetectionArray
 
 class STATE(Enum):
     IDLE = 0
-    SEARCHING = 1
-    TARGET_DETECTED = 2
-    POSITIONING = 3
-    READY_TO_SHOOT = 4
-    SHOOTING = 5
+    WANDERING = 1
+    POSITIONING = 2
+    SHOOTING = 3
 
 class PingPong(Node):
     def __init__(self):
@@ -24,12 +22,12 @@ class PingPong(Node):
         self.declare_parameter('detections_topic', '/yolo/detections')
         self.declare_parameter('controller_topic', '/gix_controller/joint_trajectory')
         self.declare_parameter('joint_name', 'gix')
-        self.declare_parameter('label', 'dog')
-        self.declare_parameter('target_position', 0.5)
-        self.declare_parameter('return_position', 1.6)
+        self.declare_parameter('label', 'orange')
+        self.declare_parameter('target_position', -1.75)
+        self.declare_parameter('return_position', -1.48)
         self.declare_parameter('min_score', 0.5)
         self.declare_parameter('cooldown_sec', 4.0)          # prevents rapid retriggers while executing
-        self.declare_parameter('min_interval_sec', 60.0)     # >= 60 s since last movement
+        self.declare_parameter('min_interval_sec', 5.0)     # >= 5 s since last movement
 
         # ---- Load parameter values ----
         self.detections_topic = self.get_parameter('detections_topic').value
@@ -59,6 +57,7 @@ class PingPong(Node):
         self._last_move_time = 0.0  # epoch seconds
 
         self.curr_state = STATE.IDLE
+        self.last_cmd = None
 
     def on_detections(self, msg: YoloDetectionArray):
         print(f"curr_state={self.curr_state.name}")
@@ -71,12 +70,12 @@ class PingPong(Node):
             return
         
         if self.curr_state == STATE.IDLE:
-            self.curr_state = STATE.SEARCHING
+            self.curr_state = STATE.WANDERING
 
         # yolo_msgs/Detection has fields like: class_name (string), score (float32), ...
         target_det = None
 
-        if self.curr_state == STATE.SEARCHING:
+        if self.curr_state in [STATE.WANDERING, STATE.POSITIONING]:
             for det in msg.detections:
                 if ((getattr(det, "class_name", "") == self.label) and 
                     (float(getattr(det, "score", 0.0)) >= self.min_score)):
@@ -84,13 +83,15 @@ class PingPong(Node):
                     break
 
         if target_det is not None:
-            self.curr_state = STATE.TARGET_DETECTED
+            self.curr_state = STATE.POSITIONING
             self.aim(target_det)
+        elif self.curr_state in [STATE.WANDERING, STATE.POSITIONING]:
+            self.curr_state = STATE.WANDERING
+            self.rotate()
 
-        if self.curr_state == STATE.READY_TO_SHOOT:
+        if self.curr_state == STATE.SHOOTING:
             self.get_logger().info("target detected — triggering motor movement.")
             self._last_move_time = now
-            self.curr_state = STATE.SHOOTING
             self.send_trajectory()
             self._set_busy()
 
@@ -106,9 +107,22 @@ class PingPong(Node):
             msg.angular.z = kp * error
         else:
             msg.angular.z = 0.0
-            self.curr_state = STATE.READY_TO_SHOOT
+            self.curr_state = STATE.SHOOTING
 
         self.cmd_pub.publish(msg)
+        self.last_cmd = msg.angular.z
+
+    def rotate(self):
+        rad = 0.1
+
+        msg = Twist()
+        if self.last_cmd is not None and self.last_cmd > 0.0:
+            msg.angular.z = -rad
+        else:
+            msg.angular.z = rad
+
+        self.cmd_pub.publish(msg)
+        self.last_cmd = msg.angular.z
         
     def send_trajectory(self):
         # 3-point trajectory:
@@ -118,13 +132,17 @@ class PingPong(Node):
 
         pt1 = JointTrajectoryPoint()
         pt1.positions = [self.target_pos]
-        pt1.time_from_start.sec = 1
+        pt1.time_from_start.sec = 0
 
         pt2 = JointTrajectoryPoint()
-        pt2.positions = [self.return_pos]
-        pt2.time_from_start.sec = 3
+        pt2.positions = [self.target_pos]
+        pt2.time_from_start.sec = 1
 
-        traj.points = [pt1, pt2]
+        pt3 = JointTrajectoryPoint()
+        pt3.positions = [self.return_pos]
+        pt3.time_from_start.sec = 3
+
+        traj.points = [pt1, pt2, pt3]
         self.traj_pub.publish(traj)
 
     def _set_busy(self):
