@@ -40,8 +40,16 @@ def generate_launch_description():
         # If you later want to override params, add a 'parameters=[{...}]' here.
     )
 
+    ping_pong = Node(
+        package='yolo2motor',
+        executable='ping_pong',
+        name='ping_pong',
+        output='screen',
+    )
+
     return LaunchDescription([
         hardware_launch,
         usb_cam,
-        yolo2motor,
+        # yolo2motor,
+        ping_pong,
     ])
