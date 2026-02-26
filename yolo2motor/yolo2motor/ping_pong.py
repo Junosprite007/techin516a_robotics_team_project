@@ -2,9 +2,19 @@ import time
 import rclpy
 from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from geometry_msgs.msg import Twist
+from enum import Enum
 
 # Use the user's message type
 from yolo_msgs.msg import DetectionArray as YoloDetectionArray
+
+class STATE(Enum):
+    IDLE = 0
+    SEARCHING = 1
+    TARGET_DETECTED = 2
+    POSITIONING = 3
+    READY_TO_SHOOT = 4
+    SHOOTING = 5
 
 class PingPong(Node):
     def __init__(self):
@@ -34,6 +44,7 @@ class PingPong(Node):
 
         # ---- Pub/Sub ----
         self.traj_pub = self.create_publisher(JointTrajectory, self.controller_topic, 10)
+        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.sub = self.create_subscription(
             YoloDetectionArray, self.detections_topic, self.on_detections, 10
         )
@@ -47,7 +58,10 @@ class PingPong(Node):
         self._busy_timer = None
         self._last_move_time = 0.0  # epoch seconds
 
+        self.curr_state = STATE.IDLE
+
     def on_detections(self, msg: YoloDetectionArray):
+        print(f"curr_state={self.curr_state.name}")
         if self._busy:
             return
 
@@ -55,20 +69,47 @@ class PingPong(Node):
         if (now - self._last_move_time) < self.min_interval:
             # Too soon since the last movement
             return
+        
+        if self.curr_state == STATE.IDLE:
+            self.curr_state = STATE.SEARCHING
 
         # yolo_msgs/Detection has fields like: class_name (string), score (float32), ...
-        seen = any(
-            (getattr(det, "class_name", "") == self.label) and
-            (float(getattr(det, "score", 0.0)) >= self.min_score)
-            for det in msg.detections
-        )
+        target_det = None
 
-        if seen:
+        if self.curr_state == STATE.SEARCHING:
+            for det in msg.detections:
+                if ((getattr(det, "class_name", "") == self.label) and 
+                    (float(getattr(det, "score", 0.0)) >= self.min_score)):
+                    target_det = det
+                    break
+
+        if target_det is not None:
+            self.curr_state = STATE.TARGET_DETECTED
+            self.aim(target_det)
+
+        if self.curr_state == STATE.READY_TO_SHOOT:
             self.get_logger().info("target detected — triggering motor movement.")
             self._last_move_time = now
+            self.curr_state = STATE.SHOOTING
             self.send_trajectory()
             self._set_busy()
 
+    def aim(self, det):
+        cx = 160
+        kp = 0.001
+
+        det_x = int(det.bbox.center.position.x)
+        error = cx - det_x
+
+        msg = Twist()
+        if abs(error) > 10:
+            msg.angular.z = kp * error
+        else:
+            msg.angular.z = 0.0
+            self.curr_state = STATE.READY_TO_SHOOT
+
+        self.cmd_pub.publish(msg)
+        
     def send_trajectory(self):
         # 3-point trajectory:
         # t=1s -> target; t=2s -> hold at target ~1s; t=3s -> back to 0
@@ -98,6 +139,7 @@ class PingPong(Node):
             self._busy_timer.cancel()
             self._busy_timer = None
         self.get_logger().debug("Cooldown complete; ready for next trigger.")
+        self.curr_state = STATE.IDLE
 
 
 def main():
