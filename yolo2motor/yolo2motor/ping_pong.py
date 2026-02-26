@@ -96,7 +96,7 @@ class PingPong(Node):
             self._set_busy()
 
     def aim(self, det):
-        cx = 160
+        cx = 320
         kp = 0.001
 
         det_x = int(det.bbox.center.position.x)
