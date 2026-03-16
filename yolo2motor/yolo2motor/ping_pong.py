@@ -1,4 +1,8 @@
+import sys
+import termios
+import threading
 import time
+import random
 import rclpy
 from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -8,21 +12,30 @@ from enum import Enum
 # Use the user's message type
 from yolo_msgs.msg import DetectionArray as YoloDetectionArray
 
-class STATE(Enum):
+class ROBOT_STATE(Enum):
     IDLE = 0
     WANDERING = 1
     POSITIONING = 2
     SHOOTING = 3
 
+class FLOW_STATE(Enum):
+    INIT = 0
+    SCANNING = 1
+    AIMING = 2
+    WAITING_PERMISSION = 3
+    STANDBY = 4
+
 class PingPong(Node):
     def __init__(self):
         super().__init__('ping_pong')
+
+        self.settings = termios.tcgetattr(sys.stdin)
 
         # ---- Parameters (override with --ros-args -p key:=value) ----
         self.declare_parameter('detections_topic', '/yolo/detections')
         self.declare_parameter('controller_topic', '/gix_controller/joint_trajectory')
         self.declare_parameter('joint_name', 'gix')
-        self.declare_parameter('label', 'orange')
+        # self.declare_parameter('label', 'orange')
         self.declare_parameter('target_position', -1.75)
         self.declare_parameter('return_position', -1.48)
         self.declare_parameter('min_score', 0.5)
@@ -33,13 +46,15 @@ class PingPong(Node):
         self.detections_topic = self.get_parameter('detections_topic').value
         self.controller_topic = self.get_parameter('controller_topic').value
         self.joint_name = self.get_parameter('joint_name').value
-        self.label = self.get_parameter('label').value
+        # self.label = self.get_parameter('label').value
         self.target_pos = float(self.get_parameter('target_position').value)
         self.return_pos = float(self.get_parameter('return_position').value)
         self.min_score = float(self.get_parameter('min_score').value)
         self.cooldown = float(self.get_parameter('cooldown_sec').value)
         self.min_interval = float(self.get_parameter('min_interval_sec').value)
 
+        self.valid_classes = ["car", "chair", "clock", "cup", "dog", "fire hydrant", "orange", "potted plant", "umbrella"]
+        
         # ---- Pub/Sub ----
         self.traj_pub = self.create_publisher(JointTrajectory, self.controller_topic, 10)
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
@@ -56,11 +71,33 @@ class PingPong(Node):
         self._busy_timer = None
         self._last_move_time = 0.0  # epoch seconds
 
-        self.curr_state = STATE.IDLE
+        self.label = None
+        self.robot_state = ROBOT_STATE.IDLE
+        self.flow_state = FLOW_STATE.INIT
         self.last_cmd = None
 
+        self.cli_thread = threading.Thread(target=self.run_cli, daemon=True)
+        self.cli_thread.start()
+
+    def run_cli(self):
+        while rclpy.ok():
+            if self.flow_state == FLOW_STATE.INIT:
+                input("\n[SYSTEM] Initialized. Press ENTER to start.")
+                self.flow_state = FLOW_STATE.SCANNING
+            
+            elif self.flow_state == FLOW_STATE.WAITING_PERMISSION:
+                input(f"\n[SYSTEM] Target locked on '{self.label.upper()}'. Press ENTER to fire.")
+                self.robot_state = ROBOT_STATE.SHOOTING
+                self.flow_state = FLOW_STATE.STANDBY
+
+            elif self.flow_state == FLOW_STATE.STANDBY:
+                if not self._busy: 
+                    input("\n[SYSTEM] Standing by. Press ENTER when ready.")
+                    self.flow_state = FLOW_STATE.SCANNING
+            
+            time.sleep(0.1)
+
     def on_detections(self, msg: YoloDetectionArray):
-        print(f"curr_state={self.curr_state.name}")
         if self._busy:
             return
 
@@ -69,31 +106,69 @@ class PingPong(Node):
             # Too soon since the last movement
             return
         
-        if self.curr_state == STATE.IDLE:
-            self.curr_state = STATE.WANDERING
+        # SCANNING TARGET
+        if self.flow_state == FLOW_STATE.SCANNING:
+            valid_detections = [
+                d for d in msg.detections
+                if float(getattr(d, "score", 0.0)) >= self.min_score
+                and getattr(d, "class_name", "") in self.valid_classes
+            ]
 
-        # yolo_msgs/Detection has fields like: class_name (string), score (float32), ...
-        target_det = None
+            if not valid_detections:
+                return
+            
+            grid_data = [{'class': getattr(d, "class_name", ""),
+                          'cx': d.bbox.center.position.x,
+                          'cy': d.bbox.center.position.y} for d in valid_detections]
+            
+            grid_data.sort(key=lambda d: d['cy'])
+            grid = []
+            for i in range(0, len(grid_data), 3):
+                row = grid_data[i:i+3]
+                row.sort(key=lambda d: d['cx'])
+                grid.extend(row)
 
-        if self.curr_state in [STATE.WANDERING, STATE.POSITIONING]:
-            for det in msg.detections:
-                if ((getattr(det, "class_name", "") == self.label) and 
-                    (float(getattr(det, "score", 0.0)) >= self.min_score)):
-                    target_det = det
-                    break
+            self.get_logger().info(f"grid: {grid}")
 
-        if target_det is not None:
-            self.curr_state = STATE.POSITIONING
-            self.aim(target_det)
-        elif self.curr_state in [STATE.WANDERING, STATE.POSITIONING]:
-            self.curr_state = STATE.WANDERING
-            self.rotate()
+            available_targets = [d['class'] for d in grid]
+            if not available_targets:
+                return
+            
+            self.label = random.choice(available_targets)
+            self.get_logger().info(f"flow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
 
-        if self.curr_state == STATE.SHOOTING:
-            self.get_logger().info("target detected — triggering motor movement.")
+            self.flow_state = FLOW_STATE.AIMING
+            self.robot_state = ROBOT_STATE.IDLE
+        
+        # ADJUSTING POSE
+        if self.flow_state == FLOW_STATE.AIMING:
+            if self.robot_state == ROBOT_STATE.IDLE:
+                self.robot_state = ROBOT_STATE.WANDERING
+
+            # yolo_msgs/Detection has fields like: class_name (string), score (float32), ...
+            target_det = None
+
+            if self.robot_state in [ROBOT_STATE.WANDERING, ROBOT_STATE.POSITIONING]:
+                for det in msg.detections:
+                    if ((getattr(det, "class_name", "") == self.label) and 
+                        (float(getattr(det, "score", 0.0)) >= self.min_score)):
+                        target_det = det
+                        break
+
+            if target_det is not None:
+                self.robot_state = ROBOT_STATE.POSITIONING
+                self.aim(target_det)
+            elif self.robot_state in [ROBOT_STATE.WANDERING, ROBOT_STATE.POSITIONING]:
+                self.robot_state = ROBOT_STATE.WANDERING
+                self.rotate()
+
+        # SHOOTING
+        if self.robot_state == ROBOT_STATE.SHOOTING:
+            self.get_logger().info(f"flow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
             self._last_move_time = now
             self.send_trajectory()
             self._set_busy()
+            self.robot_state = ROBOT_STATE.IDLE
 
     def aim(self, det):
         cx = 320
@@ -104,10 +179,11 @@ class PingPong(Node):
 
         msg = Twist()
         if abs(error) > 10:
-            msg.angular.z = kp * error
+            msg.angular.z = float(kp * error)
         else:
             msg.angular.z = 0.0
-            self.curr_state = STATE.SHOOTING
+            if self.flow_state == FLOW_STATE.AIMING:
+                self.flow_state = FLOW_STATE.WAITING_PERMISSION
 
         self.cmd_pub.publish(msg)
         self.last_cmd = msg.angular.z
@@ -156,18 +232,21 @@ class PingPong(Node):
         if self._busy_timer:
             self._busy_timer.cancel()
             self._busy_timer = None
-        self.get_logger().debug("Cooldown complete; ready for next trigger.")
-        self.curr_state = STATE.IDLE
-
+        self.get_logger().debug("cooldown complete, ready for next trigger.")
 
 def main():
     rclpy.init()
     node = PingPong()
     try:
         rclpy.spin(node)
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
+        pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, node.settings)
+
+        if rclpy.ok():
+            node.destroy_node()
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
