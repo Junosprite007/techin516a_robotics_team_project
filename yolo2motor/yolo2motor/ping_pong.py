@@ -36,7 +36,7 @@ class PingPong(Node):
         self.declare_parameter('controller_topic', '/gix_controller/joint_trajectory')
         self.declare_parameter('joint_name', 'gix')
         # self.declare_parameter('label', 'orange')
-        self.declare_parameter('target_position', -1.75)
+        self.declare_parameter('target_position', -4.75)
         self.declare_parameter('return_position', -1.48)
         self.declare_parameter('min_score', 0.5)
         self.declare_parameter('cooldown_sec', 4.0)          # prevents rapid retriggers while executing
@@ -63,7 +63,7 @@ class PingPong(Node):
         )
 
         self.get_logger().info(
-            f"Using yolo_msgs/DetectionArray on {self.detections_topic}; publishing to {self.controller_topic}"
+            f"\nusing yolo_msgs/DetectionArray on {self.detections_topic}; publishing to {self.controller_topic}"
         )
 
         # ---- Timing ----
@@ -128,14 +128,13 @@ class PingPong(Node):
                 row.sort(key=lambda d: d['cx'])
                 grid.extend(row)
 
-            self.get_logger().info(f"grid: {grid}")
-
             available_targets = [d['class'] for d in grid]
+            self.get_logger().info(f"\ntargets: {available_targets}")
             if not available_targets:
                 return
             
             self.label = random.choice(available_targets)
-            self.get_logger().info(f"flow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
+            self.get_logger().debug(f"\nflow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
 
             self.flow_state = FLOW_STATE.AIMING
             self.robot_state = ROBOT_STATE.IDLE
@@ -164,7 +163,7 @@ class PingPong(Node):
 
         # SHOOTING
         if self.robot_state == ROBOT_STATE.SHOOTING:
-            self.get_logger().info(f"flow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
+            self.get_logger().debug(f"\nflow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
             self._last_move_time = now
             self.send_trajectory()
             self._set_busy()
@@ -232,7 +231,7 @@ class PingPong(Node):
         if self._busy_timer:
             self._busy_timer.cancel()
             self._busy_timer = None
-        self.get_logger().debug("cooldown complete, ready for next trigger.")
+        self.get_logger().debug("\ncooldown complete, ready for next trigger.")
 
 def main():
     rclpy.init()
