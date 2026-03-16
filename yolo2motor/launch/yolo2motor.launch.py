@@ -51,5 +51,5 @@ def generate_launch_description():
         hardware_launch,
         usb_cam,
         # yolo2motor,
-        ping_pong,
+        # ping_pong,
     ])
