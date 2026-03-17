@@ -36,8 +36,8 @@ class PingPong(Node):
         self.declare_parameter('controller_topic', '/gix_controller/joint_trajectory')
         self.declare_parameter('joint_name', 'gix')
         # self.declare_parameter('label', 'orange')
-        self.declare_parameter('target_position', -2.00)
-        self.declare_parameter('return_position', -1.48)
+        self.declare_parameter('target_position', -1.91) # max -1.91
+        self.declare_parameter('return_position', -1.63) # min -1.63
         self.declare_parameter('min_score', 0.5)
         self.declare_parameter('cooldown_sec', 4.0)          # prevents rapid retriggers while executing
         self.declare_parameter('min_interval_sec', 5.0)     # >= 5 s since last movement
