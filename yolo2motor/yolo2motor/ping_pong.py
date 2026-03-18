@@ -36,8 +36,9 @@ class PingPong(Node):
         self.declare_parameter('controller_topic', '/gix_controller/joint_trajectory')
         self.declare_parameter('joint_name', 'gix')
         # self.declare_parameter('label', 'orange')
-        self.declare_parameter('target_position', -1.91) # max -1.91
-        self.declare_parameter('return_position', -1.63) # min -1.63
+        self.declare_parameter('target_position', 1.57)
+        self.declare_parameter('target_position_mid', 1.67)
+        self.declare_parameter('return_position', 0.0)
         self.declare_parameter('min_score', 0.5)
         self.declare_parameter('cooldown_sec', 4.0)          # prevents rapid retriggers while executing
         self.declare_parameter('min_interval_sec', 5.0)     # >= 5 s since last movement
@@ -48,6 +49,7 @@ class PingPong(Node):
         self.joint_name = self.get_parameter('joint_name').value
         # self.label = self.get_parameter('label').value
         self.target_pos = float(self.get_parameter('target_position').value)
+        self.target_pos_mid = float(self.get_parameter('target_position_mid').value)
         self.return_pos = float(self.get_parameter('return_position').value)
         self.min_score = float(self.get_parameter('min_score').value)
         self.cooldown = float(self.get_parameter('cooldown_sec').value)
@@ -72,6 +74,7 @@ class PingPong(Node):
         self._last_move_time = 0.0  # epoch seconds
 
         self.label = None
+        self.target_row_idx = 0
         self.robot_state = ROBOT_STATE.IDLE
         self.flow_state = FLOW_STATE.INIT
         self.last_cmd = None
@@ -123,17 +126,48 @@ class PingPong(Node):
             
             grid_data.sort(key=lambda d: d['cy'])
             grid = []
-            for i in range(0, len(grid_data), 3):
-                row = grid_data[i:i+3]
+            
+            # dynamically cluster into rows based on y threshold
+            y_threshold = 20.0
+            rows = []
+            current_row = []
+
+            for d in grid_data:
+                if not current_row:
+                    current_row.append(d)
+                else:
+                    cy_avg = sum(item['cy'] for item in current_row) / len(current_row)
+                    
+                    if abs(d['cy'] - cy_avg) <= y_threshold:
+                        current_row.append(d)
+                    else:
+                        rows.append(current_row)
+                        current_row = [d]
+            
+            if current_row:
+                rows.append(current_row)
+
+            available_targets = []
+            target_row_map = {}
+                        
+            for i, row in enumerate(rows):
                 row.sort(key=lambda d: d['cx'])
                 grid.extend(row)
+                row_classes = [d['class'] for d in row]
 
-            available_targets = [d['class'] for d in grid]
-            self.get_logger().info(f"\ntargets: {available_targets}")
+                row_num = i + 1
+                self.get_logger().info(f"row {row_num}: {row_classes}")
+                available_targets.extend(row_classes)
+                
+                for cls in row_classes:
+                    target_row_map[cls] = row_num
+
             if not available_targets:
                 return
             
             self.label = random.choice(available_targets)
+            self.target_row_idx = target_row_map[self.label]
+            
             self.get_logger().debug(f"\nflow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
 
             self.flow_state = FLOW_STATE.AIMING
@@ -170,7 +204,7 @@ class PingPong(Node):
             self.robot_state = ROBOT_STATE.IDLE
 
     def aim(self, det):
-        cx = 320
+        cx = 200 # center = 320
         kp = 0.001
 
         det_x = int(det.bbox.center.position.x)
@@ -202,15 +236,17 @@ class PingPong(Node):
     def send_trajectory(self):
         # 3-point trajectory:
         # t=1s -> target; t=2s -> hold at target ~1s; t=3s -> back to 0
+        shoot_pos = self.target_pos_mid if self.target_row_idx == 1 else self.target_pos
+
         traj = JointTrajectory()
         traj.joint_names = [self.joint_name]
 
         pt1 = JointTrajectoryPoint()
-        pt1.positions = [self.target_pos]
+        pt1.positions = [shoot_pos]
         pt1.time_from_start.sec = 0
 
         pt2 = JointTrajectoryPoint()
-        pt2.positions = [self.target_pos]
+        pt2.positions = [shoot_pos]
         pt2.time_from_start.sec = 1
 
         pt3 = JointTrajectoryPoint()
