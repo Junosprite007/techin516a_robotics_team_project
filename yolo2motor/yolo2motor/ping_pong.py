@@ -7,6 +7,7 @@ import math
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
@@ -74,7 +75,7 @@ class PingPong(Node):
             YoloDetectionArray, self.detections_topic, self.on_detections, 10
         )
 
-        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.on_scan, 10)
+        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.on_scan, qos_profile_sensor_data)
         self.odom_sub = self.create_subscription(Odometry, '/odom', self.on_odom, 10)
         self.control_timer = self.create_timer(0.1, self.control_loop)
         
