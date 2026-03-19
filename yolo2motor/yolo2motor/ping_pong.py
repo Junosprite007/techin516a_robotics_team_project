@@ -116,7 +116,8 @@ class PingPong(Node):
             if self.flow_state == FLOW_STATE.INIT:
                 input("\n[SYSTEM] Square robot to the center of the board. Press ENTER to start.")
                 
-                if self.front_distance == 0.0:
+                while self.front_distance == 0.0:
+                    self.get_logger().info("[SYSTEM] Waiting for valid lidar scan.")
                     time.sleep(1.0)
                 self.center_yaw = self.current_yaw
                 self.start_distance = self.front_distance                
@@ -174,9 +175,11 @@ class PingPong(Node):
             if self.front_distance > self.approach_target_dist:
                 msg.linear.x = 0.15
                 self.cmd_pub.publish(msg)
+                self.get_logger().info(f"[SYSTEM] Moving forward... Current distance: {self.front_distance:.2f} m", throttle_duration_sec=0.5)
             else:
                 msg.linear.x = 0.0
                 self.cmd_pub.publish(msg)
+                self.get_logger().info(f"[SYSTEM] Reached target point! Current distance: {self.front_distance:.2f} m")
                 self.robot_state = ROBOT_STATE.TURNING_TO_SHOOT
 
         elif self.robot_state == ROBOT_STATE.TURNING_TO_SHOOT:
@@ -280,6 +283,7 @@ class PingPong(Node):
             self.target_row_idx = target_row_map[self.label]
             
             self.get_logger().debug(f"\nflow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
+            self.get_logger().info(f"\n[SYSTEM] Target locked on {self.label.upper()} (Row {self.target_row_idx})")
 
             self.flow_state = FLOW_STATE.AIMING
             self.robot_state = ROBOT_STATE.IDLE
