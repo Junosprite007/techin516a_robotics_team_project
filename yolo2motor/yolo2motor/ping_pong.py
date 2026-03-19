@@ -3,10 +3,14 @@ import termios
 import threading
 import time
 import random
+import math
+import numpy as np
 import rclpy
 from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import Odometry
 from enum import Enum
 
 # Use the user's message type
@@ -16,14 +20,20 @@ class ROBOT_STATE(Enum):
     IDLE = 0
     WANDERING = 1
     POSITIONING = 2
-    SHOOTING = 3
+    SQUARING_BEFORE_APPROACH = 3
+    APPROACHING = 4
+    TURNING_TO_SHOOT = 5
+    SHOOTING = 6
+    SQUARING_BEFORE_RETURN = 7
+    RETURNING = 8
 
 class FLOW_STATE(Enum):
     INIT = 0
     SCANNING = 1
     AIMING = 2
     WAITING_PERMISSION = 3
-    STANDBY = 4
+    EXECUTING_SHOT = 4
+    STANDBY = 5
 
 class PingPong(Node):
     def __init__(self):
@@ -64,6 +74,18 @@ class PingPong(Node):
             YoloDetectionArray, self.detections_topic, self.on_detections, 10
         )
 
+        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.on_scan, 10)
+        self.odom_sub = self.create_subscription(Odometry, '/odom', self.on_odom, 10)
+        self.control_timer = self.create_timer(0.1, self.control_loop)
+        
+        self.front_distance = 0.0
+        self.start_distance = 0.0
+        self.approach_target_dist = 0.30 
+
+        self.current_yaw = 0.0
+        self.center_yaw = None
+        self.shoot_yaw = 0.0
+
         self.get_logger().info(
             f"\nusing yolo_msgs/DetectionArray on {self.detections_topic}; publishing to {self.controller_topic}"
         )
@@ -82,16 +104,35 @@ class PingPong(Node):
         self.cli_thread = threading.Thread(target=self.run_cli, daemon=True)
         self.cli_thread.start()
 
+    def angle_diff(self, target, current):
+        diff = target - current
+        while diff > math.pi: diff -= 2 * math.pi
+        while diff < -math.pi: diff += 2 * math.pi
+        return diff
+
     def run_cli(self):
         while rclpy.ok():
             if self.flow_state == FLOW_STATE.INIT:
-                input("\n[SYSTEM] Initialized. Press ENTER to start.")
+                input("\n[SYSTEM] Square robot to the center of the board. Press ENTER to start.")
+                
+                if self.front_distance == 0.0:
+                    time.sleep(1.0)
+                self.center_yaw = self.current_yaw
+                self.start_distance = self.front_distance                
                 self.flow_state = FLOW_STATE.SCANNING
             
             elif self.flow_state == FLOW_STATE.WAITING_PERMISSION:
-                input(f"\n[SYSTEM] Target locked on '{self.label.upper()}'. Press ENTER to fire.")
-                self.robot_state = ROBOT_STATE.SHOOTING
-                self.flow_state = FLOW_STATE.STANDBY
+                input(f"\n[SYSTEM] Target locked on '{self.label.upper()}'. Press ENTER when cleared.")
+                
+                aim_angle = self.angle_diff(self.current_yaw, self.center_yaw)
+                
+                target_y_offset = self.start_distance * math.tan(aim_angle)
+                
+                shoot_angle_relative = math.atan2(target_y_offset, self.approach_target_dist)
+                self.shoot_yaw = self.center_yaw + shoot_angle_relative
+                                
+                self.robot_state = ROBOT_STATE.SQUARING_BEFORE_APPROACH
+                self.flow_state = FLOW_STATE.EXECUTING_SHOT
 
             elif self.flow_state == FLOW_STATE.STANDBY:
                 if not self._busy: 
@@ -99,6 +140,75 @@ class PingPong(Node):
                     self.flow_state = FLOW_STATE.SCANNING
             
             time.sleep(0.1)
+
+    def on_scan(self, msg: LaserScan):
+        ranges = np.array(msg.ranges)
+        ranges[np.isinf(ranges)] = 10.0
+        ranges[np.isnan(ranges)] = 10.0
+        angle_inc = msg.angle_increment
+        idx_15deg = int(0.26 / angle_inc) 
+        front_ranges = np.concatenate((ranges[:idx_15deg], ranges[-idx_15deg:]))
+        front_ranges = front_ranges[front_ranges > 0.05]
+        if len(front_ranges) > 0:
+            self.front_distance = np.min(front_ranges)
+
+    def on_odom(self, msg: Odometry):
+        q = msg.pose.pose.orientation
+        siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+        self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
+
+    def control_loop(self):
+        msg = Twist()
+        
+        if self.robot_state == ROBOT_STATE.SQUARING_BEFORE_APPROACH:
+            diff = self.angle_diff(self.center_yaw, self.current_yaw)
+            if abs(diff) > 0.05:
+                msg.angular.z = float(0.8 * diff)
+                self.cmd_pub.publish(msg)
+            else:
+                self.robot_state = ROBOT_STATE.APPROACHING
+
+        elif self.robot_state == ROBOT_STATE.APPROACHING:
+            if self.front_distance > self.approach_target_dist:
+                msg.linear.x = 0.15
+                self.cmd_pub.publish(msg)
+            else:
+                msg.linear.x = 0.0
+                self.cmd_pub.publish(msg)
+                self.robot_state = ROBOT_STATE.TURNING_TO_SHOOT
+
+        elif self.robot_state == ROBOT_STATE.TURNING_TO_SHOOT:
+            diff = self.angle_diff(self.shoot_yaw, self.current_yaw)
+            if abs(diff) > 0.05:
+                msg.angular.z = float(0.8 * diff)
+                self.cmd_pub.publish(msg)
+            else:
+                self.robot_state = ROBOT_STATE.SHOOTING
+
+        elif self.robot_state == ROBOT_STATE.SHOOTING:
+            if not self._busy:
+                self._last_move_time = time.time()
+                self.send_trajectory()
+                self._set_busy()
+
+        elif self.robot_state == ROBOT_STATE.SQUARING_BEFORE_RETURN:
+            diff = self.angle_diff(self.center_yaw, self.current_yaw)
+            if abs(diff) > 0.05:
+                msg.angular.z = float(0.8 * diff)
+                self.cmd_pub.publish(msg)
+            else:
+                self.robot_state = ROBOT_STATE.RETURNING
+
+        elif self.robot_state == ROBOT_STATE.RETURNING:
+            if self.front_distance < self.start_distance:
+                msg.linear.x = -0.15
+                self.cmd_pub.publish(msg)
+            else:
+                msg.linear.x = 0.0
+                self.cmd_pub.publish(msg)
+                self.robot_state = ROBOT_STATE.IDLE
+                self.flow_state = FLOW_STATE.STANDBY
 
     def on_detections(self, msg: YoloDetectionArray):
         if self._busy:
@@ -195,14 +305,6 @@ class PingPong(Node):
                 self.robot_state = ROBOT_STATE.WANDERING
                 self.rotate()
 
-        # SHOOTING
-        if self.robot_state == ROBOT_STATE.SHOOTING:
-            self.get_logger().debug(f"\nflow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
-            self._last_move_time = now
-            self.send_trajectory()
-            self._set_busy()
-            self.robot_state = ROBOT_STATE.IDLE
-
     def aim(self, det):
         cx = 200 # center = 320
         kp = 0.001
@@ -268,6 +370,9 @@ class PingPong(Node):
             self._busy_timer.cancel()
             self._busy_timer = None
         self.get_logger().debug("\ncooldown complete, ready for next trigger.")
+
+        if self.flow_state == FLOW_STATE.EXECUTING_SHOT:
+            self.robot_state = ROBOT_STATE.SQUARING_BEFORE_RETURN
 
 def main():
     rclpy.init()
