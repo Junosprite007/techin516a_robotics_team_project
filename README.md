@@ -24,13 +24,7 @@ Follow the instructions from [this repo](https://github.com/GIXLabs/t516_OpenCR)
 
 ### Turtlebot 3 Raspberry Pi
 
-Clone this repo into the Pi's workspace's `src` directory and build:
-```bash
-cd ~/ros2_ws/src
-git clone https://github.com/GIXLabs/t516_project_example.git
-cd ..
-colcon build
-```
+Clone this repo into the Pi's workspace's `src` directory and build.
 
 After attaching the new motor, flashing the OpenCR, and building the Turtlebot's new workspace, you can test the new motor with the command below:  
 Note that positions are in radians.  
