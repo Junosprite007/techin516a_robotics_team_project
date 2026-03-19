@@ -1,22 +1,18 @@
-# UW GIX MSTI TECHIN 516 Winter 2025 Example Final Project
+# TECHIN 516 Winter 2025 Final Project
 
-![project example](/assets/final_project_example.jpg)
+![project photo](/assets/IMG_5787.jpg)
 
 ## Description
 
-This year, UW GIX MSTI robotics students will designing and developing their own robots!  
-Together in teams of {team size}, they will modify Turtlebot 3 robots for new applications.  
-They will add 1 new sensor, and 1 new motor to accomplish a task of their choosing.  
-This project aims to provide experience developing novel and complete robot systems spanning hardware, software, design, controls, and user interaction.
+Struck Out (ストラックアウト) is a pitching game that originated on a [Japanese TV show](https://ja.wikipedia.org/wiki/%E7%AD%8B%E8%82%89%E7%95%AA%E4%BB%98%E3%82%B7%E3%83%AA%E3%83%BC%E3%82%BA). In this project, we have reimagined the game by implementing an autonomous player using a TurtleBot3.
 
-This example demonstrates a Turtlebot 3 Burger with an added camera and dog treat dispensing motor.  
-When the camera sees a dog, the added motor dispenses a treat.  
+The system utilizes a camera and the yolo_ros package for real-time object detection. The robot aims at a custom-built target board featuring specific object classes from the COCO dataset.
 
+During gameplay, the robot autonomously selects a target, calculates the required approach distance and firing angle, and attempts to shoot a ping pong ball to knock down the target. To ensure a safe experience, the terminal prompts the user and requires explicit permission before the robot moves or fires. We built this project so people can play and enjoy a fun game alongside a robot.
 
 ## Video Demo
 
-[![video demo](https://img.youtube.com/vi/KoSGbtOjZQA/0.jpg)](https://youtu.be/KoSGbtOjZQA)
-
+[![video demo](https://img.youtube.com/vi/Jw6R5hkiqds/0.jpg)](https://youtu.be/Jw6R5hkiqds)
 
 ## Installation
 
@@ -28,7 +24,7 @@ Follow the instructions from [this repo](https://github.com/GIXLabs/t516_OpenCR)
 
 ### Turtlebot 3 Raspberry Pi
 
-Clone this repo into the Pis ros2 workspace's `src` directory and build:
+Clone this repo into the Pi's workspace's `src` directory and build:
 ```bash
 cd ~/ros2_ws/src
 git clone https://github.com/GIXLabs/t516_project_example.git
@@ -47,8 +43,8 @@ ros2 topic pub --once /gix_controller/joint_trajectory trajectory_msgs/msg/Joint
 
 ### Laptop
 
-For the above demo, object recognition was performed on my laptop with [this yolo ros package](https://github.com/mgonzs13/yolo_ros).  
-Follow their installation instructions to replicate this demo.  
+Object recognition was performed on separate computer with [this yolo ros package](https://github.com/mgonzs13/yolo_ros).  
+Follow the installation instructions.  
 
 
 ## Usage
@@ -57,6 +53,7 @@ Follow their installation instructions to replicate this demo.
 
 ```bash
 ros2 launch yolo2motor yolo2motor.launch.py
+ros2 run yolo2motor ping_pong 
 ```
 
 ### Laptop
