@@ -1,4 +1,4 @@
-# TECHIN 516 Winter 2025 Final Project
+# TECHIN 516 Winter 2026 Final Project
 
 ![project photo](/assets/IMG_5790.png)
 
