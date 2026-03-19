@@ -87,6 +87,10 @@ class PingPong(Node):
         self.center_yaw = None
         self.shoot_yaw = 0.0
 
+        self.use_lidar = False
+        self.drive_time = 2.0
+        self.drive_start_time = 0.0
+
         self.get_logger().info(
             f"\nusing yolo_msgs/DetectionArray on {self.detections_topic}; publishing to {self.controller_topic}"
         )
@@ -115,10 +119,15 @@ class PingPong(Node):
         while rclpy.ok():
             if self.flow_state == FLOW_STATE.INIT:
                 input("\n[SYSTEM] Square robot to the center of the board. Press ENTER to start.")
-                
-                while self.front_distance == 0.0:
-                    self.get_logger().info("[SYSTEM] Waiting for valid lidar scan.")
-                    time.sleep(1.0)
+
+                if self.use_lidar:
+                    while self.front_distance == 0.0:
+                        self.get_logger().info("[SYSTEM] Waiting for valid lidar scan.")
+                        time.sleep(1.0)
+                    self.start_distance = self.front_distance  
+                else:
+                    self.start_distance = 0.6
+
                 self.center_yaw = self.current_yaw
                 self.start_distance = self.front_distance                
                 self.flow_state = FLOW_STATE.SCANNING
@@ -169,17 +178,20 @@ class PingPong(Node):
                 msg.angular.z = float(0.8 * diff)
                 self.cmd_pub.publish(msg)
             else:
+                self.drive_start_time = time.time()
                 self.robot_state = ROBOT_STATE.APPROACHING
 
         elif self.robot_state == ROBOT_STATE.APPROACHING:
-            if self.front_distance > self.approach_target_dist:
+            keep_driving = (self.front_distance > self.approach_target_dist) if self.use_lidar else (time.time() - self.drive_start_time < self.drive_time)
+
+            if keep_driving:
                 msg.linear.x = 0.15
                 self.cmd_pub.publish(msg)
-                self.get_logger().info(f"[SYSTEM] Moving forward... Current distance: {self.front_distance:.2f} m", throttle_duration_sec=0.5)
+                self.get_logger().info("[SYSTEM] Moving forward...", throttle_duration_sec=0.5)
             else:
                 msg.linear.x = 0.0
                 self.cmd_pub.publish(msg)
-                self.get_logger().info(f"[SYSTEM] Reached target point! Current distance: {self.front_distance:.2f} m")
+                self.get_logger().info("[SYSTEM] Reached target point!")
                 self.robot_state = ROBOT_STATE.TURNING_TO_SHOOT
 
         elif self.robot_state == ROBOT_STATE.TURNING_TO_SHOOT:
@@ -202,10 +214,13 @@ class PingPong(Node):
                 msg.angular.z = float(0.8 * diff)
                 self.cmd_pub.publish(msg)
             else:
+                self.drive_start_time = time.time()
                 self.robot_state = ROBOT_STATE.RETURNING
 
         elif self.robot_state == ROBOT_STATE.RETURNING:
-            if self.front_distance < self.start_distance:
+            keep_driving = (self.front_distance < self.start_distance) if self.use_lidar else (time.time() - self.drive_start_time < self.drive_time)
+
+            if keep_driving:
                 msg.linear.x = -0.15
                 self.cmd_pub.publish(msg)
             else:
