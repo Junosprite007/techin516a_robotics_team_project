@@ -129,7 +129,6 @@ class PingPong(Node):
                     self.start_distance = 0.6
 
                 self.center_yaw = self.current_yaw
-                self.start_distance = self.front_distance                
                 self.flow_state = FLOW_STATE.SCANNING
             
             elif self.flow_state == FLOW_STATE.WAITING_PERMISSION:
@@ -298,7 +297,7 @@ class PingPong(Node):
             self.target_row_idx = target_row_map[self.label]
             
             self.get_logger().debug(f"\nflow state: {self.flow_state}\nrobot state: {self.robot_state}\ntarget: {self.label}")
-            self.get_logger().info(f"\n[SYSTEM] Target locked on {self.label.upper()} (Row {self.target_row_idx})")
+            self.get_logger().info(f"[SYSTEM] Target locked on {self.label.upper()} (Row {self.target_row_idx})")
 
             self.flow_state = FLOW_STATE.AIMING
             self.robot_state = ROBOT_STATE.IDLE
